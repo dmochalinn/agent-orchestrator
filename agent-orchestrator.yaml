@@ -31,7 +31,14 @@ projects:
     orchestratorRules: |
       ## NEW-OS Orchestration Rules
       Central task board: dmochalinn/new-os-tasks (GitHub Issues).
-      Workflow:
+
+      ### DEDUP CHECK (ОБЯЗАТЕЛЬНО перед созданием любого Issue)
+      Перед созданием ЛЮБОГО issue в new-os-tasks выполни:
+        existing=$(gh issue list -R dmochalinn/new-os-tasks --state all --limit 100           --json number,title | jq -r '.[] | "\(.number) \(.title)"')
+      Если похожий заголовок уже существует — НЕ СОЗДАВАТЬ дубликат.
+      Вместо этого: прокомментировать существующий issue или пропустить.
+
+      ### Workflow
       1. LIST ready: gh issue list -R dmochalinn/new-os-tasks -l ready --json number,title,labels,body,url
       2. PICK: p0 first, then p1, then by creation date
       3. ROUTE by label:
@@ -43,6 +50,10 @@ projects:
       6. ON approved-and-green -> auto-merge
       7. ON ci-failed -> send-to-agent with error context
       8. REPEAT until no ready issues remain
+
+      ### ЗАПРЕЩЕНО
+      - Создавать issue если аналогичный уже есть (любое состояние: open/closed)
+      - Спаунить сессию без issue URL из new-os-tasks
     reactions:
       ci-failed:
         auto: true
@@ -80,6 +91,8 @@ projects:
       Link issue number in commit message.
       NEVER hardcode secrets or commit .env files.
       For target/vps-direct issues: you are ON the VPS, run commands directly.
+      NEVER create new GitHub Issues in dmochalinn/new-os-tasks.
+         Sub-tasks -> document as comments on current issue or in PR description.
     reactions:
       ci-failed:
         auto: true
@@ -118,6 +131,8 @@ projects:
       Use conventional commits.
       ALL API endpoints MUST use requireAuth middleware.
       NEVER expose secrets in responses.
+      NEVER create new GitHub Issues in dmochalinn/new-os-tasks.
+         Sub-tasks -> document as comments on current issue or in PR description.
     reactions:
       ci-failed:
         auto: true

@@ -36,13 +36,27 @@ async function gh(args: string[]): Promise<string> {
   }
 }
 
-function mapState(ghState: string, stateReason?: string | null): Issue["state"] {
+function mapState(ghState: string): Issue["state"] {
   const s = ghState.toUpperCase();
-  if (s === "CLOSED") {
-    if (stateReason?.toUpperCase() === "NOT_PLANNED") return "cancelled";
-    return "closed";
-  }
+  if (s === "CLOSED") return "closed";
   return "open";
+}
+
+/** Extract issue number from a URL or #N / N identifier */
+function extractIssueNumber(identifier: string): string {
+  if (identifier.startsWith("http")) {
+    const match = identifier.match(/\/issues\/(\d+)/);
+    return match ? match[1] : identifier;
+  }
+  return identifier.replace(/^#/, "");
+}
+
+/** Build gh args for issue view — skip --repo when identifier is a URL */
+function issueViewArgs(identifier: string, repo: string, fields: string): string[] {
+  const args = ["issue", "view", identifier];
+  if (!identifier.startsWith("http")) args.push("--repo", repo);
+  args.push("--json", fields);
+  return args;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,15 +68,9 @@ function createGitHubTracker(): Tracker {
     name: "github",
 
     async getIssue(identifier: string, project: ProjectConfig): Promise<Issue> {
-      const raw = await gh([
-        "issue",
-        "view",
-        identifier,
-        "--repo",
-        project.repo,
-        "--json",
-        "number,title,body,url,state,stateReason,labels,assignees",
-      ]);
+      const raw = await gh(
+        issueViewArgs(identifier, project.repo, "number,title,body,url,state,labels,assignees"),
+      );
 
       const data: {
         number: number;
@@ -70,7 +78,6 @@ function createGitHubTracker(): Tracker {
         body: string;
         url: string;
         state: string;
-        stateReason: string | null;
         labels: Array<{ name: string }>;
         assignees: Array<{ login: string }>;
       } = JSON.parse(raw);
@@ -80,27 +87,20 @@ function createGitHubTracker(): Tracker {
         title: data.title,
         description: data.body ?? "",
         url: data.url,
-        state: mapState(data.state, data.stateReason),
+        state: mapState(data.state),
         labels: data.labels.map((l) => l.name),
         assignee: data.assignees[0]?.login,
       };
     },
 
     async isCompleted(identifier: string, project: ProjectConfig): Promise<boolean> {
-      const raw = await gh([
-        "issue",
-        "view",
-        identifier,
-        "--repo",
-        project.repo,
-        "--json",
-        "state",
-      ]);
+      const raw = await gh(issueViewArgs(identifier, project.repo, "state"));
       const data: { state: string } = JSON.parse(raw);
       return data.state.toUpperCase() === "CLOSED";
     },
 
     issueUrl(identifier: string, project: ProjectConfig): string {
+      if (identifier.startsWith("http")) return identifier;
       const num = identifier.replace(/^#/, "");
       return `https://github.com/${project.repo}/issues/${num}`;
     },
@@ -119,7 +119,7 @@ function createGitHubTracker(): Tracker {
     },
 
     branchName(identifier: string, _project: ProjectConfig): string {
-      const num = identifier.replace(/^#/, "");
+      const num = extractIssueNumber(identifier);
       return `feat/issue-${num}`;
     },
 
@@ -154,7 +154,7 @@ function createGitHubTracker(): Tracker {
         "--repo",
         project.repo,
         "--json",
-        "number,title,body,url,state,stateReason,labels,assignees",
+        "number,title,body,url,state,labels,assignees",
         "--limit",
         String(filters.limit ?? 30),
       ];
@@ -182,7 +182,6 @@ function createGitHubTracker(): Tracker {
         body: string;
         url: string;
         state: string;
-        stateReason: string | null;
         labels: Array<{ name: string }>;
         assignees: Array<{ login: string }>;
       }> = JSON.parse(raw);
@@ -192,7 +191,7 @@ function createGitHubTracker(): Tracker {
         title: data.title,
         description: data.body ?? "",
         url: data.url,
-        state: mapState(data.state, data.stateReason),
+        state: mapState(data.state),
         labels: data.labels.map((l) => l.name),
         assignee: data.assignees[0]?.login,
       }));

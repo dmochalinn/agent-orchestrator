@@ -1,28 +1,96 @@
-# Agent Orchestrator — self-hosting config (dog-fooding)
+# Agent Orchestrator — NEW-OS Multi-Agent System
+# Permission policy: default=skip+auto-merge; override per project/label
 
-dataDir: ~/.ao-sessions
-worktreeDir: ~/.worktrees/ao
+dataDir: ~/.agent-orchestrator
+worktreeDir: ~/.worktrees
+port: 3000
+terminalPort: 14800
+directTerminalPort: 14801
 
 defaults:
   runtime: tmux
   agent: claude-code
   workspace: worktree
-  notifiers: [desktop]
+  notifiers: []
 
 projects:
-  ao:
-    name: Agent Orchestrator
-    repo: ComposioHQ/agent-orchestrator
-    path: ~/agent-orchestrator
+  den-workspace:
+    name: DEN Workspace
+    repo: dmochalinn/den-workspace
+    path: /root/clawd-den
     defaultBranch: main
-    sessionPrefix: ao
+    sessionPrefix: vault
+    tracker:
+      plugin: github
     scm:
       plugin: github
-    tracker:
-      plugin: linear
-      teamId: "2a6e9b1b-19cd-4e30-b5bd-7b34dc491c7e"
-    symlinks: [.claude]
-    postCreate:
-      - "pnpm install"
     agentConfig:
       permissions: skip
+      model: claude-sonnet-4-6
+    agentRules: |
+      Always run tests before pushing.
+      Use conventional commits (feat:, fix:, chore:, docs:).
+      Link issue numbers in commit messages.
+      NEVER hardcode secrets or commit .env files.
+      For target/vps-direct issues: you are ON the VPS, run commands directly.
+    orchestratorRules: |
+      ## NEW-OS Orchestration Rules
+      Tasks live in dmochalinn/new-os-tasks as GitHub Issues.
+      Workflow:
+      1. LIST ready issues: gh issue list -R dmochalinn/new-os-tasks -l ready --json number,title,labels,body
+      2. PICK by priority/p0 first, then creation date
+      3. target/den-workspace -> ao spawn den-workspace <url>; target/den-mini-app -> ao spawn den-mini-app <url>
+      4. SPAWN max 2 concurrent sessions
+      5. MULTI-CRITIC: python3 /root/clawd-den/scripts/multi-critic-review.py --pr <N> --repo <REPO> -o /tmp/review.json
+      6. gate_verdict=pass/warn -> approve + merge + close; fail -> feedback max 2 cycles then escalate
+      7. REPEAT until no ready issues
+    reactions:
+      ci-failed:
+        auto: true
+        action: send-to-agent
+        message: "CI is failing. Run gh pr checks to see failures, fix them, and push."
+        retries: 3
+        escalateAfter: "45m"
+      changes-requested:
+        auto: true
+        action: send-to-agent
+        message: "Review comments posted. Check gh pr view --comments, address each one, push fixes."
+        escalateAfter: "30m"
+      approved-and-green:
+        auto: true
+        action: auto-merge
+        priority: action
+
+  den-mini-app:
+    name: DEN Mini-App
+    repo: dmochalinn/den-mini-app
+    path: /root/den-mini-app
+    defaultBranch: main
+    sessionPrefix: app
+    tracker:
+      plugin: github
+    scm:
+      plugin: github
+    agentConfig:
+      permissions: skip
+      model: claude-sonnet-4-6
+    agentRules: |
+      Always run: npm run typecheck && npm run lint before pushing.
+      Use conventional commits.
+      ALL API endpoints MUST use requireAuth middleware.
+      NEVER expose secrets in responses.
+    reactions:
+      ci-failed:
+        auto: true
+        action: send-to-agent
+        message: "CI failed. Run npm run typecheck && npm run lint && npm test to reproduce."
+        retries: 3
+        escalateAfter: "30m"
+      changes-requested:
+        auto: true
+        action: send-to-agent
+        escalateAfter: "30m"
+      approved-and-green:
+        auto: true
+        action: auto-merge
+        priority: action

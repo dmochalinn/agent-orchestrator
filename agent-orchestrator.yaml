@@ -1,5 +1,5 @@
 # Agent Orchestrator — NEW-OS Multi-Agent System
-# Permission policy: default=skip+auto-merge; override per project/label
+# Fork: dmochalinn/agent-orchestrator (upstream: ComposioHQ/agent-orchestrator)
 
 dataDir: ~/.agent-orchestrator
 worktreeDir: ~/.worktrees
@@ -14,12 +14,59 @@ defaults:
   notifiers: []
 
 projects:
+  agent-orchestrator:
+    name: Agent Orchestrator
+    repo: dmochalinn/agent-orchestrator
+    path: /root/agent-orchestrator
+    defaultBranch: main
+    sessionPrefix: orc
+    symlinks: [.claude]
+    scm:
+      plugin: github
+    tracker:
+      plugin: github
+    agentConfig:
+      permissions: skip
+      model: claude-sonnet-4-6
+    orchestratorRules: |
+      ## NEW-OS Orchestration Rules
+      Central task board: dmochalinn/new-os-tasks (GitHub Issues).
+      Workflow:
+      1. LIST ready: gh issue list -R dmochalinn/new-os-tasks -l ready --json number,title,labels,body,url
+      2. PICK: p0 first, then p1, then by creation date
+      3. ROUTE by label:
+           target/den-workspace  -> ao spawn den-workspace <url>
+           target/den-mini-app   -> ao spawn den-mini-app <url>
+           target/orc            -> ao spawn agent-orchestrator <url>
+      4. SPAWN max 2 concurrent sessions
+      5. MONITOR: ao status
+      6. ON approved-and-green -> auto-merge
+      7. ON ci-failed -> send-to-agent with error context
+      8. REPEAT until no ready issues remain
+    reactions:
+      ci-failed:
+        auto: true
+        action: send-to-agent
+        message: "CI failed. Check: gh pr checks, fix, push."
+        retries: 3
+        escalateAfter: "45m"
+      changes-requested:
+        auto: true
+        action: send-to-agent
+        message: "Review comments posted. Address each one and push."
+        escalateAfter: "30m"
+      approved-and-green:
+        auto: true
+        action: auto-merge
+        priority: action
+
   den-workspace:
     name: DEN Workspace
     repo: dmochalinn/den-workspace
     path: /root/clawd-den
     defaultBranch: main
     sessionPrefix: vault
+    symlinks: [.claude]
     tracker:
       plugin: github
     scm:
@@ -30,31 +77,20 @@ projects:
     agentRules: |
       Always run tests before pushing.
       Use conventional commits (feat:, fix:, chore:, docs:).
-      Link issue numbers in commit messages.
+      Link issue number in commit message.
       NEVER hardcode secrets or commit .env files.
       For target/vps-direct issues: you are ON the VPS, run commands directly.
-    orchestratorRules: |
-      ## NEW-OS Orchestration Rules
-      Tasks live in dmochalinn/new-os-tasks as GitHub Issues.
-      Workflow:
-      1. LIST ready issues: gh issue list -R dmochalinn/new-os-tasks -l ready --json number,title,labels,body
-      2. PICK by priority/p0 first, then creation date
-      3. target/den-workspace -> ao spawn den-workspace <url>; target/den-mini-app -> ao spawn den-mini-app <url>
-      4. SPAWN max 2 concurrent sessions
-      5. MULTI-CRITIC: python3 /root/clawd-den/scripts/multi-critic-review.py --pr <N> --repo <REPO> -o /tmp/review.json
-      6. gate_verdict=pass/warn -> approve + merge + close; fail -> feedback max 2 cycles then escalate
-      7. REPEAT until no ready issues
     reactions:
       ci-failed:
         auto: true
         action: send-to-agent
-        message: "CI is failing. Run gh pr checks to see failures, fix them, and push."
+        message: "CI failing. Run gh pr checks, fix, push."
         retries: 3
         escalateAfter: "45m"
       changes-requested:
         auto: true
         action: send-to-agent
-        message: "Review comments posted. Check gh pr view --comments, address each one, push fixes."
+        message: "Review comments. Address each, push fixes."
         escalateAfter: "30m"
       approved-and-green:
         auto: true
@@ -67,6 +103,9 @@ projects:
     path: /root/den-mini-app
     defaultBranch: main
     sessionPrefix: app
+    symlinks: [.claude]
+    postCreate:
+      - "npm ci"
     tracker:
       plugin: github
     scm:
@@ -83,7 +122,7 @@ projects:
       ci-failed:
         auto: true
         action: send-to-agent
-        message: "CI failed. Run npm run typecheck && npm run lint && npm test to reproduce."
+        message: "CI failed. Run: npm run typecheck && npm run lint && npm test"
         retries: 3
         escalateAfter: "30m"
       changes-requested:

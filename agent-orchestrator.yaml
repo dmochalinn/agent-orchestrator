@@ -117,8 +117,6 @@ projects:
     defaultBranch: main
     sessionPrefix: app
     symlinks: [.claude]
-    postCreate:
-      - "npm ci"
     tracker:
       plugin: github
     scm:
